@@ -4,7 +4,7 @@ use crate::{
 };
 
 use bevy_app::Plugin;
-use bevy_asset::Handle;
+use bevy_asset::{Handle, HandleUntyped};
 use bevy_core_pipeline::prelude::Camera3d;
 use bevy_ecs::{
     prelude::*,
@@ -14,7 +14,7 @@ use bevy_ecs::{
     },
 };
 use bevy_render::{
-    camera::CameraPlugin,
+    camera::Camera,
     extract_component::DynamicUniformIndex,
     mesh::{GpuBufferInfo, Mesh},
     render_asset::RenderAssets,
@@ -24,6 +24,7 @@ use bevy_render::{
         PhaseItem, RenderCommand, RenderCommandResult, RenderPhase, TrackedRenderPass,
     },
     render_resource::{
+        AsBindGroup,
         BindGroup, BindGroupLayout, CachedRenderPipelineId, FragmentState, PipelineCache,
         RenderPipelineDescriptor, SamplerBindingType, Shader, SpecializedRenderPipeline,
         SpecializedRenderPipelines, VertexBufferLayout, VertexState,
@@ -34,6 +35,7 @@ use bevy_render::{
         ExtractedView, Msaa, ViewDepthTexture, ViewUniformOffset, ViewUniforms, VisibleEntities,
     },
     RenderApp, RenderStage,
+    Extract
 };
 use bevy_utils::FloatOrd;
 use bevy_utils::HashMap;
@@ -42,7 +44,7 @@ use std::marker::PhantomData;
 use wgpu::{
     BindGroupDescriptor, BindGroupEntry, BindGroupLayoutDescriptor, BindGroupLayoutEntry,
     BindingResource, BindingType, BufferBindingType, BufferSize, CompareFunction, DepthBiasState,
-    DepthStencilState, Face, FrontFace, IndexFormat, LoadOp, MultisampleState, Operations,
+    DepthStencilState, Face, FrontFace, LoadOp, MultisampleState, Operations,
     PolygonMode, PrimitiveState, PrimitiveTopology, RenderPassDepthStencilAttachment,
     RenderPassDescriptor, ShaderStages, StencilFaceState, StencilState, TextureFormat,
     TextureSampleType, TextureViewDimension, VertexAttribute, VertexFormat, VertexStepMode,
@@ -333,7 +335,7 @@ where
     M::Data: PartialEq + Eq + Hash + Clone,
 {
     fn build(&self, app: &mut bevy_app::App) {
-        let render_app = app.sub_app(RenderApp);
+        let mut render_app = app.sub_app_mut(RenderApp);
         render_app
             .add_system_to_stage(
                 RenderStage::Extract,
@@ -381,11 +383,12 @@ where
     }
 }
 
-// TODO: ActiveCameras
-// pub fn extract_depth_phases(mut commands: Commands, active_cameras: Res<ActiveCameras>) {
-pub fn extract_depth_phases(mut commands: Commands, active_cameras: Res<Camera3d>) {
-    if let Some(camera_3d) = active_cameras.get(CameraPlugin::CAMERA_3D) {
-        if let Some(entity) = camera_3d.entity {
+pub fn extract_depth_phases(
+    mut commands: Commands,
+    cameras_3d: Extract<Query<(Entity, &Camera), With<Camera3d>>>,
+) {
+    for (entity, camera) in cameras_3d.iter() {
+        if camera.is_active {
             commands.get_or_spawn(entity).insert_bundle((
                 RenderPhase::<OpaqueDepth3d>::default(),
                 RenderPhase::<AlphaMaskDepth3d>::default(),
@@ -399,7 +402,7 @@ pub struct DepthPrepassViewBindGroup {
     pub value: BindGroup,
 }
 
-pub type DepthPrepassMaterialBindGroups = HashMap<Handle<StandardMaterial>, BindGroup>;
+pub type DepthPrepassMaterialBindGroups = HashMap<HandleUntyped, BindGroup>;
 
 #[allow(clippy::too_many_arguments)]
 pub fn queue_depth_prepass_meshes<M: Material>(
@@ -415,7 +418,7 @@ pub fn queue_depth_prepass_meshes<M: Material>(
     gpu_images: Res<RenderAssets<Image>>,
     render_materials: Res<RenderMaterials<M>>,
     render_meshes: Res<RenderAssets<Mesh>>,
-    standard_material_meshes: Query<(&Handle<StandardMaterial>, &Handle<Mesh>, &MeshUniform)>,
+    standard_material_meshes: Query<(&Handle<M>, &Handle<Mesh>, &MeshUniform)>,
     depth_prepass_pipeline: Res<DepthPrepassPipeline>,
     mesh_pipeline: Res<MeshPipeline>,
     mut views: Query<(
@@ -463,7 +466,11 @@ pub fn queue_depth_prepass_meshes<M: Material>(
                         if material.properties.alpha_mode == AlphaMode::Blend {
                             continue;
                         }
-                        if !depth_prepass_material_bind_groups.contains_key(material_handle) {
+                        if !depth_prepass_material_bind_groups.contains_key(&material_handle.clone_untyped()) {
+
+                            depth_prepass_material_bind_groups.insert(material_handle.clone_untyped(), material.bind_group.clone());
+
+                            /*
                             if let Some((base_color_texture_view, base_color_sampler)) =
                                 mesh_pipeline
                                     .get_image_texture(&*gpu_images, &material.base_color_texture)
@@ -494,14 +501,22 @@ pub fn queue_depth_prepass_meshes<M: Material>(
                                 depth_prepass_material_bind_groups
                                     .insert(material_handle.clone(), bind_group);
                             }
+                            */
                         }
 
                         let mut key = DepthPrepassPipelineKey::from_msaa_samples(msaa.samples);
+
+                        // TODO: Skipped
+
+                        key |= DepthPrepassPipelineKey::VERTEX_TANGENTS;
+                        
+                        /*
                         if let Some(mesh) = render_meshes.get(mesh_handle) {
                             if mesh.has_tangents {
                                 key |= DepthPrepassPipelineKey::VERTEX_TANGENTS;
                             }
                         }
+                        */
                         key |= match material.properties.alpha_mode {
                             AlphaMode::Opaque => DepthPrepassPipelineKey::OPAQUE_DEPTH_PREPASS,
                             AlphaMode::Mask(_) => DepthPrepassPipelineKey::ALPHA_MASK_DEPTH_PREPASS,
@@ -703,6 +718,7 @@ impl RenderCommand<AlphaMaskDepth3d> for SetDepthPrepassPipeline {
 pub struct SetMeshViewBindGroup<const I: usize>;
 impl<T: PhaseItem, const I: usize> RenderCommand<T> for SetMeshViewBindGroup<I> {
     type Param = SQuery<(Read<ViewUniformOffset>, Read<DepthPrepassViewBindGroup>)>;
+
     #[inline]
     fn render<'w>(
         view: Entity,
@@ -710,12 +726,9 @@ impl<T: PhaseItem, const I: usize> RenderCommand<T> for SetMeshViewBindGroup<I> 
         view_query: SystemParamItem<'w, '_, Self::Param>,
         pass: &mut TrackedRenderPass<'w>,
     ) -> RenderCommandResult {
-        let (view_uniform, depth_prepass_view_bind_group) = view_query.get(view).unwrap();
-        pass.set_bind_group(
-            I,
-            &depth_prepass_view_bind_group.value,
-            &[view_uniform.offset],
-        );
+        let (view_uniform, prepass_view_bind_group) = view_query.get_inner(view).unwrap();
+        pass.set_bind_group(I, &prepass_view_bind_group.value, &[view_uniform.offset]);
+
         RenderCommandResult::Success
     }
 }
@@ -760,7 +773,7 @@ impl<T: EntityPhaseItem + PhaseItem, const I: usize> RenderCommand<T>
     ) -> RenderCommandResult {
         let handle = handle_query.get(item.entity()).unwrap();
         let material_bind_groups = material_bind_groups.into_inner();
-        let material_bind_group = material_bind_groups.get(handle).unwrap();
+        let material_bind_group = material_bind_groups.get(&handle.clone_untyped()).unwrap();
         pass.set_bind_group(I, material_bind_group, &[]);
         RenderCommandResult::Success
     }
