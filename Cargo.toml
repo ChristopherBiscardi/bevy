@@ -748,6 +748,7 @@ anyhow = "1"
 accesskit = "0.21"
 nonmax = "0.5"
 gltf = "1.4"
+wgpu = "28"
 
 [target.'cfg(not(target_family = "wasm"))'.dev-dependencies]
 ureq = { version = "3.0.8", features = ["json"] }
@@ -3136,6 +3137,17 @@ doc-scrape-examples = true
 [package.metadata.example.fullscreen_material]
 name = "Fullscreen Material"
 description = "Demonstrates how to write a fullscreen material"
+category = "Shaders Advanced"
+wasm = true
+
+[[example]]
+name = "mesh_shader"
+path = "examples/shader_advanced/mesh_shader.rs"
+doc-scrape-examples = true
+
+[package.metadata.example.mesh_shader]
+name = "Mesh Shader"
+description = "Demonstrates how to write task and mesh shaders"
 category = "Shaders Advanced"
 wasm = true
 
