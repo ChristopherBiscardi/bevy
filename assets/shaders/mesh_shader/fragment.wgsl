@@ -94,10 +94,6 @@ struct Globals {
     // Frame count since the start of the app.
     // It wraps to zero when it reaches the maximum value of a u32.
     frame_count: u32,
-// #ifdef SIXTEEN_BYTE_ALIGNMENT
-    // WebGL2 structs must be 16 byte aligned.
-    // _webgl2_padding: f32
-// #endif
 };
 
 @group(0) @binding(0) var<uniform> globals: Globals;
@@ -105,7 +101,6 @@ struct Globals {
 
 struct VertexOutput {
     @builtin(position) position: vec4<f32>,
-    // @location(0) color: vec4<f32>,
     @location(0) uv: vec2<f32>,
     @location(1) normal: vec3<f32>
 }
@@ -120,7 +115,6 @@ struct Output {
 }
 @fragment
 fn fragment(vertex: VertexOutput, primitive: PrimitiveInput) -> Output {
-    // return vertex.position;//vertex.color * primitive.colorMask;
     var output: Output;
     output.color = vec4(vertex.uv, 0.,1.);
     // output.color = vec4(vertex.normal,1.);

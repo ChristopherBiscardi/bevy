@@ -1,6 +1,6 @@
 enable wgpu_mesh_shader;
 
-// bevy_render/src/view/view.wgsl
+
 struct ColorGrading {
     balance: mat3x3<f32>,
     saturation: vec3<f32>,
@@ -67,7 +67,24 @@ struct View {
     frame_count: u32,
 };
 
-// globals.wgsl
+
+/// Convert ndc depth to linear view z.
+/// Note: Depth values in front of the camera will be negative as -z is forward
+fn depth_ndc_to_view_z(ndc_depth: f32, clip_from_view: mat4x4<f32>, view_from_clip: mat4x4<f32>) -> f32 {
+// #ifdef VIEW_PROJECTION_PERSPECTIVE
+    return -perspective_camera_near(clip_from_view) / ndc_depth;
+// #else ifdef VIEW_PROJECTION_ORTHOGRAPHIC
+//     return -(clip_from_view[3][2] - ndc_depth) / clip_from_view[2][2];
+// #else
+//     let view_pos = view_from_clip * vec4(0.0, 0.0, ndc_depth, 1.0);
+//     return view_pos.z / view_pos.w;
+// #endif
+}
+
+fn perspective_camera_near(clip_from_view: mat4x4<f32>) -> f32 {
+    return clip_from_view[3][2];
+}
+
 struct Globals {
     // The time since startup in seconds
     // Wraps to 0 after 1 hour.
@@ -77,38 +94,36 @@ struct Globals {
     // Frame count since the start of the app.
     // It wraps to zero when it reaches the maximum value of a u32.
     frame_count: u32,
+// #ifdef SIXTEEN_BYTE_ALIGNMENT
+    // WebGL2 structs must be 16 byte aligned.
+    // _webgl2_padding: f32
+// #endif
 };
-
-/* assorted useful bevy functions */
-fn mesh_position_local_to_world(world_from_local: mat4x4<f32>, vertex_position: vec4<f32>) -> vec4<f32> {
-    return world_from_local * vertex_position;
-}
-
-fn position_world_to_clip(world_pos: vec3<f32>) -> vec4<f32> {
-    let clip_pos = view.clip_from_world * vec4(world_pos, 1.0);
-    return clip_pos;
-}
 
 @group(0) @binding(0) var<uniform> globals: Globals;
 @group(0) @binding(1) var<uniform> view: View;
 
-// TaskPayload should be kept very small.
-struct TaskPayload {
-    colorMask: vec4<f32>,
-    visible: bool,
+struct VertexOutput {
+    @builtin(position) position: vec4<f32>,
+    // @location(0) color: vec4<f32>,
+    @location(0) uv: vec2<f32>,
+    @location(1) normal: vec3<f32>
 }
 
-var<task_payload> taskPayload: TaskPayload;
-var<workgroup> workgroupData: f32;
-
-@task
-@payload(taskPayload)
-@workgroup_size(1)
-fn task() -> @builtin(mesh_task_size) vec3<u32> {
-    workgroupData = 1.0;
-    taskPayload.colorMask = vec4(1.0, 1.0, 0.0, 1.0);
-    taskPayload.visible = true;
-
-    return vec3u(globals.time);
+struct PrimitiveInput {
+    @per_primitive @location(3) colorMask: vec4<f32>,
 }
 
+struct Output {
+    @location(0) color: vec4<f32>,
+    @builtin(frag_depth) frag_depth: f32
+}
+@fragment
+fn fragment(vertex: VertexOutput, primitive: PrimitiveInput) -> Output {
+    // return vertex.position;//vertex.color * primitive.colorMask;
+    var output: Output;
+    output.color = vec4(vertex.uv, 0.,1.);
+    // output.color = vec4(vertex.normal,1.);
+    output.frag_depth = vertex.position.z;
+    return output;
+}
