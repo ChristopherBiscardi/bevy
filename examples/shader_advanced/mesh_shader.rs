@@ -4,7 +4,6 @@
 
 use std::ops::Range;
 
-use bevy::camera::Viewport;
 use bevy::pbr::SetMeshViewEmptyBindGroup;
 use bevy::{
     camera::MainPassResolutionOverride,
@@ -53,19 +52,26 @@ use bevy::{
         Extract, Render, RenderApp, RenderDebugFlags, RenderStartup, RenderSystems,
     },
 };
+use bevy::{camera::Viewport, core_pipeline::core_3d::CORE_3D_DEPTH_FORMAT};
 use bevy_render::{
+    globals::{GlobalsBuffer, GlobalsUniform},
     render_resource::{
-        BindGroup, BindGroupDescriptor, BindGroupEntries, BindGroupEntry, BindGroupLayout,
-        BindGroupLayoutDescriptor, BindGroupLayoutEntry, BindingType, Buffer, BufferBindingType,
-        BufferInitDescriptor, BufferUsages, PipelineLayoutDescriptor, RenderPipeline,
-        ShaderModuleDescriptor, ShaderSource, ShaderStages, ShaderType, UniformBuffer,
+        binding_types::uniform_buffer, BindGroup, BindGroupDescriptor, BindGroupEntries,
+        BindGroupEntry, BindGroupLayout, BindGroupLayoutDescriptor, BindGroupLayoutEntry,
+        BindingType, Buffer, BufferBindingType, BufferInitDescriptor, BufferUsages,
+        PipelineLayoutDescriptor, RenderPipeline, ShaderModuleDescriptor, ShaderSource,
+        ShaderStages, ShaderType, UniformBuffer,
     },
     renderer::{RenderDevice, RenderQueue},
     settings::{RenderCreation, WgpuFeatures, WgpuLimits, WgpuSettings},
+    view::{ViewDepthTexture, ViewUniform, ViewUniformOffset, ViewUniforms},
     RenderPlugin,
 };
 use nonmax::NonMaxU32;
-use wgpu::TaskState;
+use wgpu::{
+    BufferBinding, CompareFunction, DepthBiasState, DepthStencilState, StencilState, StoreOp,
+    TaskState,
+};
 
 const SHADER_ASSET_PATH: &str = "shaders/custom_stencil.wgsl";
 
@@ -84,7 +90,18 @@ fn main() {
             MeshStencilPhasePlugin,
         ))
         .add_systems(Startup, setup)
+        .add_systems(Update, rotate_camera)
         .run();
+}
+
+fn rotate_camera(mut camera: Query<&mut Transform, With<Camera>>, time: Res<Time>) {
+    let now = time.elapsed_secs();
+    for mut transform in camera.iter_mut() {
+        *transform = Transform::from_translation(
+            Quat::from_rotation_y(now).mul_vec3(Vec3::new(-2.0, 4.5, 9.0)),
+        )
+        .looking_at(Vec3::ZERO, Vec3::Y);
+    }
 }
 
 fn setup(
@@ -93,16 +110,16 @@ fn setup(
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
     // circular base
-    commands.spawn((
-        Mesh3d(meshes.add(Circle::new(4.0))),
-        MeshMaterial3d(materials.add(Color::WHITE)),
-        Transform::from_rotation(Quat::from_rotation_x(-std::f32::consts::FRAC_PI_2)),
-    ));
+    // commands.spawn((
+    //     Mesh3d(meshes.add(Circle::new(4.0))),
+    //     MeshMaterial3d(materials.add(Color::WHITE)),
+    //     Transform::from_rotation(Quat::from_rotation_x(-std::f32::consts::FRAC_PI_2)),
+    // ));
     // cube
     // This cube will be rendered by the main pass, but it will also be rendered by our custom
     // pass. This should result in an unlit red cube
     commands.spawn((
-        Mesh3d(meshes.add(Cuboid::new(1.0, 1.0, 1.0))),
+        Mesh3d(meshes.add(Cuboid::new(0.5, 0.5, 0.5))),
         MeshMaterial3d(materials.add(Color::srgb_u8(124, 144, 255))),
         Transform::from_xyz(0.0, 0.5, 0.0),
         // This marker component is used to identify which mesh will be used in our custom pass
@@ -239,7 +256,8 @@ impl SpecializedMeshPipeline for StencilPipeline {
             }),
             primitive: PrimitiveState {
                 topology: key.primitive_topology(),
-                cull_mode: Some(Face::Back),
+                // I think I'm writing the vertices in the wrong order?
+                cull_mode: None,
                 ..default()
             },
             // It's generally recommended to specialize your pipeline for MSAA,
@@ -591,7 +609,7 @@ struct CustomDrawPassLabel;
 
 struct CustomDrawNode {
     mesh_pipeline: RenderPipeline,
-    time_layout: BindGroupLayout,
+    bind_group_data: BindGroupLayout,
     // time_bind_group: BindGroup,
     // time_uniform_buffer: UniformBuffer<ShaderData>,
 }
@@ -632,23 +650,35 @@ impl FromWorld for CustomDrawNode {
             })
         };
 
-        let time_layout = device.create_bind_group_layout(
-            "time_layout",
-            &[BindGroupLayoutEntry {
-                binding: 0,
-                visibility: ShaderStages::all(),
-                ty: BindingType::Buffer {
-                    ty: BufferBindingType::Uniform,
-                    has_dynamic_offset: false,
-                    min_binding_size: Some(ShaderData::min_size()),
+        let bind_group_data = device.create_bind_group_layout(
+            "bind_group_data",
+            &[
+                BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: ShaderStages::all(),
+                    ty: BindingType::Buffer {
+                        ty: BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: Some(GlobalsUniform::min_size()),
+                    },
+                    count: None,
                 },
-                count: None,
-            }],
+                BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: ShaderStages::all(),
+                    ty: BindingType::Buffer {
+                        ty: BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: Some(ViewUniform::min_size()),
+                    },
+                    count: None,
+                },
+            ],
         );
 
         let pipeline_layout = device.create_pipeline_layout(&PipelineLayoutDescriptor {
             label: "triangle_layout".into(),
-            bind_group_layouts: &[&time_layout],
+            bind_group_layouts: &[&bind_group_data],
             immediate_size: 0,
         });
 
@@ -680,7 +710,13 @@ impl FromWorld for CustomDrawNode {
                         })],
                     }),
                     primitive: Default::default(),
-                    depth_stencil: None,
+                    depth_stencil: Some(DepthStencilState {
+                        format: CORE_3D_DEPTH_FORMAT,
+                        depth_write_enabled: true,
+                        depth_compare: CompareFunction::Greater,
+                        stencil: StencilState::default(),
+                        bias: DepthBiasState::default(),
+                    }),
                     multisample: Default::default(),
                     cache: None,
                     multiview: None,
@@ -688,7 +724,7 @@ impl FromWorld for CustomDrawNode {
 
         CustomDrawNode {
             mesh_pipeline: mesh_pipeline.into(),
-            time_layout,
+            bind_group_data,
         }
     }
 }
@@ -698,6 +734,8 @@ impl ViewNode for CustomDrawNode {
         &'static ExtractedCamera,
         &'static ExtractedView,
         &'static ViewTarget,
+        &'static ViewDepthTexture,
+        &'static ViewUniformOffset,
         Option<&'static MainPassResolutionOverride>,
     );
 
@@ -705,47 +743,32 @@ impl ViewNode for CustomDrawNode {
         &self,
         graph: &mut RenderGraphContext,
         render_context: &mut RenderContext<'w>,
-        (camera, view, target, resolution_override): QueryItem<'w, '_, Self::ViewQuery>,
+        (camera, view, target, depth, view_uniform_offset, resolution_override): QueryItem<
+            'w,
+            '_,
+            Self::ViewQuery,
+        >,
         world: &'w World,
     ) -> Result<(), NodeRunError> {
-        // First, we need to get our phases resource
-        // let Some(stencil_phases) = world.get_resource::<ViewSortedRenderPhases<Stencil3d>>() else {
+        // Get the view entity from the graph
+        let view_entity = graph.view_entity();
+
+        let view_uniforms_resource = world.resource::<ViewUniforms>();
+        let view_uniforms = &view_uniforms_resource.uniforms;
+        let view_uniforms_buffer = view_uniforms.buffer().unwrap();
+
+        let globals_buffer = world.resource::<GlobalsBuffer>();
+
+        // let (
+        //     Ok((view_uniform_offset, view_target, auto_exposure, view)),
+        //     Some(auto_exposure_buffers),
+        // ) = (
+        //     self.query.get_manual(world, view_entity),
+        //     auto_exposure_buffers.buffers.get(&view_entity),
+        // )
+        // else {
         //     return Ok(());
         // };
-
-        // // Get the view entity from the graph
-        // let view_entity = graph.view_entity();
-
-        // // Get the phase for the current view running our node
-        // let Some(stencil_phase) = stencil_phases.get(&view.retained_view_entity) else {
-        //     return Ok(());
-        // };
-
-        // // Render pass setup
-        // let mut render_pass = render_context.begin_tracked_render_pass(RenderPassDescriptor {
-        //     label: Some("stencil pass"),
-        //     // For the purpose of the example, we will write directly to the view target. A real
-        //     // stencil pass would write to a custom texture and that texture would be used in later
-        //     // passes to render custom effects using it.
-        //     color_attachments: &[Some(target.get_color_attachment())],
-        //     // We don't bind any depth buffer for this pass
-        //     depth_stencil_attachment: None,
-        //     timestamp_writes: None,
-        //     occlusion_query_set: None,
-        //     multiview_mask: None,
-        // });
-
-        // if let Some(viewport) =
-        //     Viewport::from_viewport_and_override(camera.viewport.as_ref(), resolution_override)
-        // {
-        //     render_pass.set_camera_viewport(&viewport);
-        // }
-
-        // // Render the phase
-        // // This will execute each draw functions of each phase items queued in this phase
-        // if let Err(err) = stencil_phase.render(&mut render_pass, world, view_entity) {
-        //     error!("Error encountered while rendering the stencil phase {err:?}");
-        // }
 
         let data = ShaderData {
             time: world.resource::<Time>().elapsed_secs(),
@@ -757,8 +780,15 @@ impl ViewNode for CustomDrawNode {
         // uniform.wri
         let time_bind_group = render_context.render_device().create_bind_group(
             "time_bind_group",
-            &self.time_layout,
-            &BindGroupEntries::sequential((&time_uniform_buffer,)),
+            &self.bind_group_data,
+            &BindGroupEntries::sequential((
+                &globals_buffer.buffer,
+                BufferBinding {
+                    buffer: view_uniforms_buffer,
+                    size: Some(ViewUniform::min_size()),
+                    offset: view_uniform_offset.offset as u64,
+                },
+            )),
         );
 
         {
@@ -767,12 +797,9 @@ impl ViewNode for CustomDrawNode {
                     .command_encoder()
                     .begin_render_pass(&RenderPassDescriptor {
                         label: Some("mesh shader pass"),
-                        // For the purpose of the example, we will write directly to the view target. A real
-                        // stencil pass would write to a custom texture and that texture would be used in later
-                        // passes to render custom effects using it.
+                        // Write directly to the view target
                         color_attachments: &[Some(target.get_color_attachment())],
-                        // We don't bind any depth buffer for this pass
-                        depth_stencil_attachment: None,
+                        depth_stencil_attachment: Some(depth.get_attachment(StoreOp::Store)),
                         timestamp_writes: None,
                         occlusion_query_set: None,
                         multiview_mask: None,
@@ -781,15 +808,23 @@ impl ViewNode for CustomDrawNode {
             render_pass.push_debug_group("Prepare data for draw.");
             render_pass.set_pipeline(&self.mesh_pipeline);
             render_pass.set_bind_group(0, &time_bind_group, &[]);
+            if let Some(viewport) =
+                Viewport::from_viewport_and_override(camera.viewport.as_ref(), resolution_override)
+            {
+                render_pass.set_viewport(
+                    viewport.physical_position.x as f32,
+                    viewport.physical_position.y as f32,
+                    viewport.physical_size.x as f32,
+                    viewport.physical_size.y as f32,
+                    viewport.depth.start,
+                    viewport.depth.end,
+                );
+            }
             render_pass.pop_debug_group();
             render_pass.insert_debug_marker("Draw!");
             render_pass.draw_mesh_tasks(1, 1, 1);
         }
-        // if let Some(viewport) =
-        //     Viewport::from_viewport_and_override(camera.viewport.as_ref(), resolution_override)
-        // {
-        //     render_pass.set_camera_viewport(&viewport);
-        // }
+
         // let c = render_context.command_encoder().finish();
 
         // let render_queue = world.resource::<RenderQueue>();
