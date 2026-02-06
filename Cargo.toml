@@ -3283,6 +3283,17 @@ description = "Demonstrates how to write task and mesh shaders"
 category = "Shaders Advanced: Mesh Shaders"
 wasm = true
 
+[[example]]
+name = "mesh_shader_grass"
+path = "examples/shader_advanced_mesh/grass.rs"
+doc-scrape-examples = true
+
+[package.metadata.example.grass]
+name = "Mesh Shader: Grass"
+description = "Demonstrates a grass system with mesh shaders"
+category = "Shaders Advanced: Mesh Shaders"
+wasm = true
+
 # Stress tests
 [[package.metadata.example_category]]
 name = "Stress Tests"
