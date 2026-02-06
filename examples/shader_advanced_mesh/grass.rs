@@ -5,35 +5,30 @@
 #[cfg(feature = "free_camera")]
 use bevy::camera_controller::free_camera::{FreeCamera, FreeCameraPlugin};
 use bevy::{
-    camera::MainPassResolutionOverride,
-    core_pipeline::{Core3d, Core3dSystems},
-    ecs::query::QueryItem,
+    camera::{MainPassResolutionOverride, Viewport},
+    core_pipeline::{core_3d::CORE_3D_DEPTH_FORMAT, Core3d, Core3dSystems},
     prelude::*,
     render::{
         camera::ExtractedCamera,
-        render_resource::{ColorTargetState, ColorWrites, RenderPassDescriptor, TextureFormat},
-        renderer::RenderContext,
-        view::{ExtractedView, ViewTarget},
-        RenderApp,
+        globals::{GlobalsBuffer, GlobalsUniform},
+        render_resource::{
+            BindGroupEntries, BindGroupLayout, BindGroupLayoutEntry, BindingType,
+            BufferBindingType, ColorTargetState, ColorWrites, PipelineLayoutDescriptor,
+            RenderPassDescriptor, RenderPipeline, ShaderModuleDescriptor, ShaderSource,
+            ShaderStages, ShaderType, TextureFormat, WgpuFeatures, WgpuLimits,
+        },
+        renderer::{RenderContext, RenderDevice, ViewQuery},
+        settings::{RenderCreation, WgpuSettings},
+        view::{
+            ExtractedView, ViewDepthTexture, ViewTarget, ViewUniform, ViewUniformOffset,
+            ViewUniforms,
+        },
+        RenderApp, RenderPlugin,
     },
-};
-use bevy::{camera::Viewport, core_pipeline::core_3d::CORE_3D_DEPTH_FORMAT};
-use bevy_render::{
-    globals::{GlobalsBuffer, GlobalsUniform},
-    render_resource::{
-        BindGroupEntries, BindGroupLayout, BindGroupLayoutEntry, BindingType, BufferBindingType,
-        PipelineLayoutDescriptor, RenderPipeline, ShaderModuleDescriptor, ShaderSource,
-        ShaderStages, ShaderType,
-    },
-    renderer::{RenderDevice, ViewQuery},
-    settings::{RenderCreation, WgpuFeatures, WgpuLimits, WgpuSettings},
-    view::{ViewDepthTexture, ViewUniform, ViewUniformOffset, ViewUniforms},
-    RenderPlugin,
 };
 
 use wgpu::{
     BufferBinding, CompareFunction, DepthBiasState, DepthStencilState, StencilState, StoreOp,
-    TaskState,
 };
 
 fn main() {
