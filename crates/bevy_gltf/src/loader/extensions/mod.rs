@@ -120,7 +120,24 @@ pub trait GltfExtensionHandler: Send + Sync {
     }
 
     /// Called when an individual glTF primitive is processed
-    /// glTF primitives are what become a Bevy `Mesh`
+    /// glTF primitives are what become a Bevy `Mesh`.
+    ///
+    /// `buffer_data` is a reference to all of the buffers from the
+    /// glTF document, in order.
+    /// `out_doc` and `out_data` exist to support features like
+    /// the decompression of mesh data, which is transformative in
+    /// nature. The structure here reflects the nature of the gltf
+    /// crate's types.
+    ///
+    /// `out_doc` is an optional `gltf::Document` which, if set,
+    /// must contain a single `gltf::Mesh` with a single
+    /// `gltf::Primitive`. This represents the *new* `gltf::Primitive`
+    /// that was created through a process like decompression.
+    ///
+    /// `out_data` is a single buffer wrapped in a `Vec`, which mirrors
+    /// the structure of a full `gltf::Document`. The outer `Vec` must
+    /// contain a single `Vec<u8>` of data, as only the first generated
+    /// buffer is used.
     #[expect(
         unused,
         reason = "default trait implementations do not use the arguments because they are no-ops"
@@ -130,11 +147,7 @@ pub trait GltfExtensionHandler: Send + Sync {
         load_context: &mut LoadContext<'_>,
         gltf_document: &gltf::Gltf,
         gltf_primitive: &gltf::Primitive,
-        #[expect(
-            clippy::ptr_arg,
-            reason = "on_gltf_primitive requires &Vec<Vec<u8>> for external API compatibility"
-        )]
-        buffer_data: &Vec<Vec<u8>>,
+        buffer_data: &[Vec<u8>],
         out_doc: &mut Option<gltf::Document>,
         out_data: &mut Option<Vec<Vec<u8>>>,
     ) {
