@@ -36,12 +36,12 @@ fn main() {
     App::new()
         .add_plugins((
             DefaultPlugins.set(RenderPlugin {
-                render_creation: RenderCreation::Automatic(WgpuSettings {
+                render_creation: RenderCreation::Automatic(Box::new(WgpuSettings {
                     features: WgpuFeatures::EXPERIMENTAL_MESH_SHADER
                         | WgpuFeatures::EXPERIMENTAL_PASSTHROUGH_SHADERS,
                     limits: WgpuLimits::default().using_recommended_minimum_mesh_shader_values(),
                     ..default()
-                }),
+                })),
                 ..default()
             }),
             MeshShaderDemoPlugin,
