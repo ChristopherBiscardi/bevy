@@ -432,12 +432,18 @@ pub async fn initialize_renderer(
             max_color_attachment_bytes_per_sample: limits
                 .max_color_attachment_bytes_per_sample
                 .min(constrained_limits.max_color_attachment_bytes_per_sample),
-            max_task_mesh_workgroup_total_count: limits
-                .max_task_mesh_workgroup_total_count
-                .min(constrained_limits.max_task_mesh_workgroup_total_count),
-            max_task_mesh_workgroups_per_dimension: limits
-                .max_task_mesh_workgroups_per_dimension
-                .min(constrained_limits.max_task_mesh_workgroups_per_dimension),
+            max_mesh_workgroup_total_count: limits
+                .max_mesh_workgroup_total_count
+                .min(constrained_limits.max_mesh_workgroup_total_count),
+            max_mesh_workgroups_per_dimension: limits
+                .max_mesh_workgroups_per_dimension
+                .min(constrained_limits.max_mesh_workgroups_per_dimension),
+            max_task_workgroup_total_count: limits
+                .max_task_workgroup_total_count
+                .min(limits.max_task_workgroup_total_count),
+            max_task_workgroups_per_dimension: limits
+                .max_task_workgroups_per_dimension
+                .min(limits.max_task_workgroups_per_dimension),
             max_task_invocations_per_workgroup: limits
                 .max_task_invocations_per_workgroup
                 .min(constrained_limits.max_task_invocations_per_workgroup),
