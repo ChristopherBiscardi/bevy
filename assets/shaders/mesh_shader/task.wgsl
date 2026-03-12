@@ -109,6 +109,6 @@ fn task() -> @builtin(mesh_task_size) vec3<u32> {
     taskPayload.colorMask = vec4(1.0, 1.0, 0.0, 1.0);
     taskPayload.visible = true;
 
-    return vec3u(globals.time);
+    return vec3u(u32(globals.time));
 }
 

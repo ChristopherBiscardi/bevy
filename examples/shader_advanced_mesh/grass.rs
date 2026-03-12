@@ -6,7 +6,10 @@
 use bevy::camera_controller::free_camera::{FreeCamera, FreeCameraPlugin};
 use bevy::{
     camera::{MainPassResolutionOverride, Viewport},
-    core_pipeline::{core_3d::CORE_3D_DEPTH_FORMAT, Core3d, Core3dSystems},
+    core_pipeline::{
+        core_3d::{main_opaque_pass_3d, CORE_3D_DEPTH_FORMAT},
+        Core3d, Core3dSystems,
+    },
     prelude::*,
     render::{
         camera::ExtractedCamera,
@@ -37,7 +40,7 @@ fn main() {
             DefaultPlugins.set(RenderPlugin {
                 render_creation: RenderCreation::Automatic(Box::new(WgpuSettings {
                     features: WgpuFeatures::EXPERIMENTAL_MESH_SHADER
-                        | WgpuFeatures::EXPERIMENTAL_PASSTHROUGH_SHADERS,
+                        | WgpuFeatures::PASSTHROUGH_SHADERS,
                     limits: WgpuLimits::default().using_recommended_minimum_mesh_shader_values(),
                     ..default()
                 })),
@@ -90,9 +93,12 @@ impl Plugin for MeshShaderGrassPlugin {
             return;
         };
 
-        render_app
-            .init_resource::<GrassDrawNode>()
-            .add_systems(Core3d, draw_grass.in_set(Core3dSystems::MainPass));
+        render_app.init_resource::<GrassDrawNode>().add_systems(
+            Core3d,
+            draw_grass
+                .before(main_opaque_pass_3d)
+                .in_set(Core3dSystems::MainPass),
+        );
     }
 }
 
@@ -146,7 +152,7 @@ impl FromWorld for GrassDrawNode {
 
         let pipeline_layout = device.create_pipeline_layout(&PipelineLayoutDescriptor {
             label: "grass_mesh_shader_pipeline_layout".into(),
-            bind_group_layouts: &[&bind_group_data],
+            bind_group_layouts: &[Some(&bind_group_data)],
             immediate_size: 0,
         });
 
@@ -175,8 +181,8 @@ impl FromWorld for GrassDrawNode {
                     primitive: Default::default(),
                     depth_stencil: Some(DepthStencilState {
                         format: CORE_3D_DEPTH_FORMAT,
-                        depth_write_enabled: true,
-                        depth_compare: CompareFunction::Greater,
+                        depth_write_enabled: Some(true),
+                        depth_compare: Some(CompareFunction::Greater),
                         stencil: StencilState::default(),
                         bias: DepthBiasState::default(),
                     }),
