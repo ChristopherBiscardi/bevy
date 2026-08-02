@@ -1,7 +1,7 @@
-/// TODO: some docs
-///
-/// This is a MeshPipeline example that runs every frame and renders hardcoded cube mesh data at a world-space coordinate defined by the mesh workgroup id
-///
+//! TODO: some docs
+//!
+//! This is a MeshPipeline example that runs every frame and renders hardcoded cube mesh data at a world-space coordinate defined by the mesh workgroup id
+//!
 #[cfg(feature = "free_camera")]
 use bevy::camera_controller::free_camera::{FreeCamera, FreeCameraPlugin};
 use bevy::{
@@ -98,7 +98,7 @@ impl Plugin for MeshShaderDemoPlugin {
                 Core3d,
                 draw_mesh_shader_cubes
                     .after(main_opaque_pass_3d)
-                    .in_set(Core3dSystems::PostProcess),
+                    .in_set(Core3dSystems::MainPass),
             );
     }
 }

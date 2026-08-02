@@ -95,7 +95,7 @@ const GRASS_VERT_COUNT: u32 = 256;
 const GRASS_PRIM_COUNT: u32 = 192;
 // arbitrary distance to stop rendering grass. There is no value
 // set in the blog post
-const GRASS_END_DISTANCE: f32 = 100;
+const GRASS_END_DISTANCE: f32 = 50;
 
 struct MeshOutput {
     @builtin(vertices) vertices: array<VertexOutput, GRASS_VERT_COUNT>,

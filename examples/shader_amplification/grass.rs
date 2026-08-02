@@ -1,7 +1,7 @@
-/// TODO: some docs
-///
-/// Procedural grass based on [Procedural grass rendering](https://gpuopen.com/learn/mesh_shaders/mesh_shaders-procedural_grass_rendering/).
-///
+//! TODO: some docs
+//!
+//! Procedural grass based on [Procedural grass rendering](https://gpuopen.com/learn/mesh_shaders/mesh_shaders-procedural_grass_rendering/).
+//!
 #[cfg(feature = "free_camera")]
 use bevy::camera_controller::free_camera::{FreeCamera, FreeCameraPlugin};
 use bevy::{
@@ -10,7 +10,7 @@ use bevy::{
         core_3d::{main_opaque_pass_3d, CORE_3D_DEPTH_FORMAT},
         Core3d, Core3dSystems,
     },
-    material::descriptor::{MeshPipelineDescriptor, MeshState, TaskState},
+    material::descriptor::{MeshPipelineDescriptor, MeshState},
     prelude::*,
     render::{
         camera::ExtractedCamera,
@@ -85,6 +85,7 @@ fn setup(
     ));
 }
 
+/// The plugin that sets up the mesh shader pass
 struct MeshShaderDemoPlugin;
 impl Plugin for MeshShaderDemoPlugin {
     fn build(&self, app: &mut App) {
@@ -98,11 +99,12 @@ impl Plugin for MeshShaderDemoPlugin {
                 Core3d,
                 draw_mesh_shader_cubes
                     .after(main_opaque_pass_3d)
-                    .in_set(Core3dSystems::PostProcess),
+                    .in_set(Core3dSystems::MainPass),
             );
     }
 }
 
+/// initialize the mesh pipelines
 fn init_mesh_pipelines(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
